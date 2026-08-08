@@ -12,28 +12,36 @@
 #include <linux/string.h>
 #include <linux/mutex.h>
 
-#define DRIVER_NAME     "prochardev"
-#define DRIVER_CLASS    "prochardev_class"
-#define BUFFER_SIZE     100
+#define DRIVER_NAME "prochardev"
+#define DRIVER_CLASS "prochardev_class"
+#define BUFFER_SIZE 100
 
-/* Driver context.*/
 struct prochardev_device
 {
     dev_t dev_num;
-
     struct cdev cdev;
-
     struct class *class;
-
     struct device *device;
-
     char *buffer;
-
-    /* Protects access to buffer.*/
     struct mutex lock;
 };
 
-/* Global driver instance */
 extern struct prochardev_device prochardev;
+
+int prochardev_alloc_buffer(void);
+void prochardev_free_buffer(void);
+
+int prochardev_open(struct inode *inode, struct file *file);
+int prochardev_release(struct inode *inode, struct file *file);
+
+ssize_t prochardev_read(struct file *file,
+                        char __user *buffer,
+                        size_t count,
+                        loff_t *offset);
+
+ssize_t prochardev_write(struct file *file,
+                         const char __user *buffer,
+                         size_t count,
+                         loff_t *offset);
 
 #endif
