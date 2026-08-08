@@ -10,13 +10,13 @@
 #include <linux/uaccess.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/mutex.h>
 
 #define DRIVER_NAME     "prochardev"
 #define DRIVER_CLASS    "prochardev_class"
 #define BUFFER_SIZE     100
 
-/* Driver context.
-  This structure contains all information belonging to our device.*/
+/* Driver context.*/
 struct prochardev_device
 {
     dev_t dev_num;
@@ -28,9 +28,12 @@ struct prochardev_device
     struct device *device;
 
     char *buffer;
+
+    /* Protects access to buffer.*/
+    struct mutex lock;
 };
 
-/* Global driver instance.*/
+/* Global driver instance */
 extern struct prochardev_device prochardev;
 
 #endif
