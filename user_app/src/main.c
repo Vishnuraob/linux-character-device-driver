@@ -38,9 +38,7 @@ static void read_data(int fd)
     char buffer[BUFFER_SIZE];
     ssize_t bytes_read;
 
-    memset(buffer, 0, sizeof(buffer));
-
-    bytes_read = read(fd, buffer, sizeof(buffer) - 1);
+    bytes_read = read(fd, buffer, sizeof(buffer));
 
     if (bytes_read < 0)
     {
@@ -54,9 +52,11 @@ static void read_data(int fd)
         return;
     }
 
-    buffer[bytes_read] = '\0';
+    printf("Driver data: ");
 
-    printf("Driver data: %s\n", buffer);
+    fwrite(buffer, 1, bytes_read, stdout);
+
+    printf("\n");
 }
 
 static void clear_buffer(int fd)

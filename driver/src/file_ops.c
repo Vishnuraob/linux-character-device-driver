@@ -22,32 +22,43 @@ ssize_t prochardev_read(struct file *file,
                         size_t count,
                         loff_t *offset)
 {
+    char *temp_buffer;
+    ssize_t bytes_read;
+
+    if (count == 0)
+        return 0;
+
+    temp_buffer = kmalloc(count, GFP_KERNEL);
+
+    if (!temp_buffer)
+        return -ENOMEM;
+
     mutex_lock(&prochardev.lock);
 
-    if (*offset >= prochardev.data_length)
+    if (prochardev.data_count == 0)
     {
         mutex_unlock(&prochardev.lock);
+        kfree(temp_buffer);
         return 0;
     }
 
-    if (count > prochardev.data_length - *offset)
-        count = prochardev.data_length - *offset;
-
-    if (copy_to_user(buffer,
-                     prochardev.buffer + *offset,
-                     count))
-    {
-        mutex_unlock(&prochardev.lock);
-        return -EFAULT;
-    }
-
-    *offset += count;
+    bytes_read = prochardev_buffer_read(temp_buffer, count);
 
     mutex_unlock(&prochardev.lock);
 
-    printk(KERN_INFO "prochardev: read %zu bytes\n", count);
+    if (copy_to_user(buffer, temp_buffer, bytes_read))
+    {
+        kfree(temp_buffer);
+        return -EFAULT;
+    }
 
-    return count;
+    kfree(temp_buffer);
+
+    printk(KERN_INFO
+           "prochardev: read %zd bytes\n",
+           bytes_read);
+
+    return bytes_read;
 }
 
 // Write data to the driver
@@ -56,28 +67,47 @@ ssize_t prochardev_write(struct file *file,
                          size_t count,
                          loff_t *offset)
 {
-    mutex_lock(&prochardev.lock);
+    char *temp_buffer;
+    ssize_t bytes_written;
 
-    if (count >= BUFFER_SIZE)
-        count = BUFFER_SIZE - 1;
+    if (count == 0)
+        return 0;
 
-    if (copy_from_user(prochardev.buffer,
+    temp_buffer = kmalloc(count, GFP_KERNEL);
+
+    if (!temp_buffer)
+        return -ENOMEM;
+
+    if (copy_from_user(temp_buffer,
                        buffer,
                        count))
     {
-        mutex_unlock(&prochardev.lock);
+        kfree(temp_buffer);
         return -EFAULT;
     }
 
-    prochardev.buffer[count] = '\0';
+    mutex_lock(&prochardev.lock);
 
-    prochardev.data_length = count;
+    bytes_written =
+        prochardev_buffer_write(temp_buffer, count);
 
     mutex_unlock(&prochardev.lock);
 
-    printk(KERN_INFO "prochardev: data written\n");
+    kfree(temp_buffer);
 
-    return count;
+    if (bytes_written == 0)
+    {
+        printk(KERN_WARNING
+               "prochardev: buffer is full\n");
+
+        return -ENOSPC;
+    }
+
+    printk(KERN_INFO
+           "prochardev: wrote %zd bytes\n",
+           bytes_written);
+
+    return bytes_written;
 }
 
 // Handle control commands
@@ -93,11 +123,7 @@ long prochardev_ioctl(struct file *file,
 
             mutex_lock(&prochardev.lock);
 
-            memset(prochardev.buffer,
-                   0,
-                   BUFFER_SIZE);
-
-            prochardev.data_length = 0;
+            prochardev_buffer_clear();
 
             mutex_unlock(&prochardev.lock);
 
