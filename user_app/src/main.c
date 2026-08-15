@@ -1,0 +1,177 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/ioctl.h>
+
+#include "../../driver/include/prochardev_ioctl.h"
+
+#define DEVICE_PATH "/dev/prochardev"
+#define BUFFER_SIZE 100
+
+static void write_data(int fd)
+{
+    char buffer[BUFFER_SIZE];
+    ssize_t bytes_written;
+
+    printf("Enter data: ");
+
+    if (fgets(buffer, sizeof(buffer), stdin) == NULL)
+        return;
+
+    buffer[strcspn(buffer, "\n")] = '\0';
+
+    bytes_written = write(fd, buffer, strlen(buffer));
+
+    if (bytes_written < 0)
+    {
+        perror("write");
+        return;
+    }
+
+    printf("Written %zd bytes\n", bytes_written);
+}
+
+static void read_data(int fd)
+{
+    char buffer[BUFFER_SIZE];
+    ssize_t bytes_read;
+
+    memset(buffer, 0, sizeof(buffer));
+
+    bytes_read = read(fd, buffer, sizeof(buffer) - 1);
+
+    if (bytes_read < 0)
+    {
+        perror("read");
+        return;
+    }
+
+    if (bytes_read == 0)
+    {
+        printf("Buffer is empty\n");
+        return;
+    }
+
+    buffer[bytes_read] = '\0';
+
+    printf("Driver data: %s\n", buffer);
+}
+
+static void clear_buffer(int fd)
+{
+    if (ioctl(fd, PROCHARDEV_CLEAR_BUFFER) < 0)
+    {
+        perror("ioctl");
+        return;
+    }
+
+    printf("Buffer cleared\n");
+}
+
+static void get_buffer_size(int fd)
+{
+    int size;
+
+    if (ioctl(fd, PROCHARDEV_GET_BUFFER_SIZE, &size) < 0)
+    {
+        perror("ioctl");
+        return;
+    }
+
+    printf("Buffer size: %d bytes\n", size);
+}
+
+static void get_version(int fd)
+{
+    int version;
+
+    if (ioctl(fd, PROCHARDEV_GET_VERSION, &version) < 0)
+    {
+        perror("ioctl");
+        return;
+    }
+
+    printf("Driver version: %d\n", version);
+}
+
+static void show_menu(void)
+{
+    printf("\n");
+    printf("===== ProCharDev =====\n");
+    printf("1. Write data\n");
+    printf("2. Read data\n");
+    printf("3. Clear buffer\n");
+    printf("4. Get buffer size\n");
+    printf("5. Get driver version\n");
+    printf("6. Exit\n");
+    printf("======================\n");
+    printf("Enter choice: ");
+}
+
+int main(void)
+{
+    int fd;
+    int choice;
+
+    fd = open(DEVICE_PATH, O_RDWR);
+
+    if (fd < 0)
+    {
+        perror("open");
+        return 1;
+    }
+
+    printf("ProCharDev opened successfully\n");
+
+    while (1)
+    {
+        show_menu();
+
+        if (scanf("%d", &choice) != 1)
+        {
+            printf("Invalid input\n");
+
+            while (getchar() != '\n')
+                ;
+
+            continue;
+        }
+
+        while (getchar() != '\n')
+            ;
+
+        switch (choice)
+        {
+            case 1:
+                write_data(fd);
+                break;
+
+            case 2:
+                read_data(fd);
+                break;
+
+            case 3:
+                clear_buffer(fd);
+                break;
+
+            case 4:
+                get_buffer_size(fd);
+                break;
+
+            case 5:
+                get_version(fd);
+                break;
+
+            case 6:
+                close(fd);
+                printf("Exiting...\n");
+                return 0;
+
+            default:
+                printf("Invalid choice\n");
+        }
+    }
+}
+
