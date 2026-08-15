@@ -24,6 +24,7 @@ struct prochardev_device
     struct class *class;
     struct device *device;
     char *buffer;
+    size_t data_length;
     struct mutex lock;
 };
 

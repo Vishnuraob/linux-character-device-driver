@@ -14,6 +14,7 @@ int prochardev_alloc_buffer(void)
     memset(prochardev.buffer, 0, BUFFER_SIZE);
 
     strcpy(prochardev.buffer, "Hello from prochardev!\n");
+    prochardev.data_length = strlen(prochardev.buffer);
 
     mutex_init(&prochardev.lock);
 
@@ -25,4 +26,5 @@ void prochardev_free_buffer(void)
 {
     kfree(prochardev.buffer);
     prochardev.buffer = NULL;
+    prochardev.data_length = 0;
 }

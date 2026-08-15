@@ -22,20 +22,16 @@ ssize_t prochardev_read(struct file *file,
                         size_t count,
                         loff_t *offset)
 {
-    size_t data_length;
-
     mutex_lock(&prochardev.lock);
 
-    data_length = strlen(prochardev.buffer);
-
-    if (*offset >= data_length)
+    if (*offset >= prochardev.data_length)
     {
         mutex_unlock(&prochardev.lock);
         return 0;
     }
 
-    if (count > data_length - *offset)
-        count = data_length - *offset;
+    if (count > prochardev.data_length - *offset)
+        count = prochardev.data_length - *offset;
 
     if (copy_to_user(buffer,
                      prochardev.buffer + *offset,
@@ -75,6 +71,8 @@ ssize_t prochardev_write(struct file *file,
 
     prochardev.buffer[count] = '\0';
 
+    prochardev.data_length = count;
+
     mutex_unlock(&prochardev.lock);
 
     printk(KERN_INFO "prochardev: data written\n");
@@ -82,7 +80,7 @@ ssize_t prochardev_write(struct file *file,
     return count;
 }
 
-// Handle control commands from user space
+// Handle control commands
 long prochardev_ioctl(struct file *file,
                       unsigned int cmd,
                       unsigned long arg)
@@ -98,6 +96,8 @@ long prochardev_ioctl(struct file *file,
             memset(prochardev.buffer,
                    0,
                    BUFFER_SIZE);
+
+            prochardev.data_length = 0;
 
             mutex_unlock(&prochardev.lock);
 
