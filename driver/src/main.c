@@ -2,16 +2,6 @@
 
 struct prochardev_device prochardev;
 
-// Connect system calls to driver functions
-static const struct file_operations prochardev_fops =
-{
-    .owner = THIS_MODULE,
-    .open = prochardev_open,
-    .read = prochardev_read,
-    .write = prochardev_write,
-    .release = prochardev_release,
-};
-
 // Initialize the driver
 static int __init prochardev_init(void)
 {
@@ -40,7 +30,8 @@ static int __init prochardev_init(void)
            MAJOR(prochardev.dev_num),
            MINOR(prochardev.dev_num));
 
-    cdev_init(&prochardev.cdev, &prochardev_fops);
+    cdev_init(&prochardev.cdev,
+              &prochardev_fops);
 
     prochardev.cdev.owner = THIS_MODULE;
 
@@ -50,7 +41,9 @@ static int __init prochardev_init(void)
 
     if (ret < 0)
     {
-        printk(KERN_ERR "prochardev: cdev_add failed\n");
+        printk(KERN_ERR
+               "prochardev: cdev_add failed\n");
+
         goto error_device_number;
     }
 
@@ -59,6 +52,7 @@ static int __init prochardev_init(void)
     if (IS_ERR(prochardev.class))
     {
         ret = PTR_ERR(prochardev.class);
+
         goto error_cdev;
     }
 
@@ -71,10 +65,12 @@ static int __init prochardev_init(void)
     if (IS_ERR(prochardev.device))
     {
         ret = PTR_ERR(prochardev.device);
+
         goto error_class;
     }
 
-    printk(KERN_INFO "prochardev: driver loaded\n");
+    printk(KERN_INFO
+           "prochardev: driver loaded\n");
 
     return 0;
 
@@ -107,7 +103,8 @@ static void __exit prochardev_exit(void)
 
     prochardev_free_buffer();
 
-    printk(KERN_INFO "prochardev: driver unloaded\n");
+    printk(KERN_INFO
+           "prochardev: driver unloaded\n");
 }
 
 module_init(prochardev_init);

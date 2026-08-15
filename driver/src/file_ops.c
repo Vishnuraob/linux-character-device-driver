@@ -81,3 +81,75 @@ ssize_t prochardev_write(struct file *file,
 
     return count;
 }
+
+// Handle control commands from user space
+long prochardev_ioctl(struct file *file,
+                      unsigned int cmd,
+                      unsigned long arg)
+{
+    int value;
+
+    switch (cmd)
+    {
+        case PROCHARDEV_CLEAR_BUFFER:
+
+            mutex_lock(&prochardev.lock);
+
+            memset(prochardev.buffer,
+                   0,
+                   BUFFER_SIZE);
+
+            mutex_unlock(&prochardev.lock);
+
+            printk(KERN_INFO
+                   "prochardev: buffer cleared\n");
+
+            break;
+
+        case PROCHARDEV_GET_BUFFER_SIZE:
+
+            value = BUFFER_SIZE;
+
+            if (copy_to_user((int __user *)arg,
+                             &value,
+                             sizeof(value)))
+            {
+                return -EFAULT;
+            }
+
+            break;
+
+        case PROCHARDEV_GET_VERSION:
+
+            value = 1;
+
+            if (copy_to_user((int __user *)arg,
+                             &value,
+                             sizeof(value)))
+            {
+                return -EFAULT;
+            }
+
+            break;
+
+        default:
+
+            printk(KERN_WARNING
+                   "prochardev: unknown ioctl command\n");
+
+            return -EINVAL;
+    }
+
+    return 0;
+}
+
+// Connect system calls to driver functions
+const struct file_operations prochardev_fops =
+{
+    .owner = THIS_MODULE,
+    .open = prochardev_open,
+    .read = prochardev_read,
+    .write = prochardev_write,
+    .release = prochardev_release,
+    .unlocked_ioctl = prochardev_ioctl,
+};

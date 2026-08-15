@@ -11,6 +11,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/mutex.h>
+#include "prochardev_ioctl.h"
 
 #define DRIVER_NAME "prochardev"
 #define DRIVER_CLASS "prochardev_class"
@@ -43,5 +44,10 @@ ssize_t prochardev_write(struct file *file,
                          const char __user *buffer,
                          size_t count,
                          loff_t *offset);
+long prochardev_ioctl(struct file *file,
+                      unsigned int cmd,
+                      unsigned long arg);
+
+extern const struct file_operations prochardev_fops;
 
 #endif

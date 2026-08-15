@@ -1,0 +1,17 @@
+#ifndef PROCHARDEV_IOCTL_H
+#define PROCHARDEV_IOCTL_H
+
+#include <linux/ioctl.h>
+
+#define PROCHARDEV_MAGIC 'p'
+
+#define PROCHARDEV_CLEAR_BUFFER \
+    _IO(PROCHARDEV_MAGIC, 1)
+
+#define PROCHARDEV_GET_BUFFER_SIZE \
+    _IOR(PROCHARDEV_MAGIC, 2, int)
+
+#define PROCHARDEV_GET_VERSION \
+    _IOR(PROCHARDEV_MAGIC, 3, int)
+
+#endif
