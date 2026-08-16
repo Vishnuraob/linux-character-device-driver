@@ -33,6 +33,13 @@ ssize_t prochardev_read(struct file *file,
 
     if (!temp_buffer)
         return -ENOMEM;
+    
+    // Return immediately if non-blocking mode is enabled
+    if (prochardev.data_count == 0 && (file->f_flags & O_NONBLOCK))
+    {
+        kfree(temp_buffer);
+        return -EAGAIN;
+    }
 
     // Wait until data is available
     ret = wait_event_interruptible(
