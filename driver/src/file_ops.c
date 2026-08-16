@@ -16,7 +16,7 @@ int prochardev_release(struct inode *inode, struct file *file)
     return 0;
 }
 
-// Read data from the driver
+// Read data from the circular buffer
 ssize_t prochardev_read(struct file *file,
                         char __user *buffer,
                         size_t count,
@@ -24,6 +24,7 @@ ssize_t prochardev_read(struct file *file,
 {
     char *temp_buffer;
     ssize_t bytes_read;
+    int ret;
 
     if (count == 0)
         return 0;
@@ -33,14 +34,19 @@ ssize_t prochardev_read(struct file *file,
     if (!temp_buffer)
         return -ENOMEM;
 
-    mutex_lock(&prochardev.lock);
+    // Wait until data is available
+    ret = wait_event_interruptible(
+        prochardev.read_queue,
+        prochardev.data_count > 0
+    );
 
-    if (prochardev.data_count == 0)
+    if (ret)
     {
-        mutex_unlock(&prochardev.lock);
         kfree(temp_buffer);
-        return 0;
+        return ret;
     }
+
+    mutex_lock(&prochardev.lock);
 
     bytes_read = prochardev_buffer_read(temp_buffer, count);
 
@@ -61,7 +67,7 @@ ssize_t prochardev_read(struct file *file,
     return bytes_read;
 }
 
-// Write data to the driver
+// Write data to the circular buffer
 ssize_t prochardev_write(struct file *file,
                          const char __user *buffer,
                          size_t count,
@@ -102,6 +108,9 @@ ssize_t prochardev_write(struct file *file,
 
         return -ENOSPC;
     }
+
+    // Wake up processes waiting for data
+    wake_up_interruptible(&prochardev.read_queue);
 
     printk(KERN_INFO
            "prochardev: wrote %zd bytes\n",

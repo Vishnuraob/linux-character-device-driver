@@ -11,6 +11,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/mutex.h>
+#include <linux/wait.h>
 
 #include "prochardev_ioctl.h"
 
@@ -31,6 +32,7 @@ struct prochardev_device
     size_t data_count;
 
     struct mutex lock;
+    wait_queue_head_t read_queue;
 };
 
 extern struct prochardev_device prochardev;

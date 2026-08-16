@@ -19,6 +19,9 @@ int prochardev_alloc_buffer(void)
 
     mutex_init(&prochardev.lock);
 
+    // Initialize the read wait queue
+    init_waitqueue_head(&prochardev.read_queue);
+
     return 0;
 }
 
