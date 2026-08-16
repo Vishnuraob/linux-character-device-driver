@@ -185,6 +185,26 @@ long prochardev_ioctl(struct file *file,
     return 0;
 }
 
+// Check whether the device is ready
+static __poll_t prochardev_poll(struct file *file,
+                                struct poll_table_struct *wait)
+{
+    __poll_t mask = 0;
+
+    // Add the process to the read wait queue
+    poll_wait(file, &prochardev.read_queue, wait);
+
+    mutex_lock(&prochardev.lock);
+
+    // Data is available to read
+    if (prochardev.data_count > 0)
+        mask |= POLLIN | POLLRDNORM;
+
+    mutex_unlock(&prochardev.lock);
+
+    return mask;
+}
+
 // Connect system calls to driver functions
 const struct file_operations prochardev_fops =
 {
@@ -194,4 +214,5 @@ const struct file_operations prochardev_fops =
     .write = prochardev_write,
     .release = prochardev_release,
     .unlocked_ioctl = prochardev_ioctl,
+    .poll = prochardev_poll,
 };

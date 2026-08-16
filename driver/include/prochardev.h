@@ -12,6 +12,7 @@
 #include <linux/string.h>
 #include <linux/mutex.h>
 #include <linux/wait.h>
+#include <linux/poll.h>
 
 #include "prochardev_ioctl.h"
 
