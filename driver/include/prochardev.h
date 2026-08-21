@@ -46,6 +46,9 @@ extern struct prochardev_device prochardev[DEVICE_COUNT];
 int prochardev_alloc_buffer(struct prochardev_device *dev);
 void prochardev_free_buffer(struct prochardev_device *dev);
 
+int prochardev_sysfs_create(struct prochardev_device *dev);
+void prochardev_sysfs_remove(struct prochardev_device *dev);
+
 ssize_t prochardev_buffer_read(struct prochardev_device *dev,
                                char *buffer,
                                size_t count);

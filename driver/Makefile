@@ -1,6 +1,6 @@
 obj-m += prochardev.o
 
-prochardev-objs := src/main.o src/file_ops.o src/memory.o src/thread.o
+prochardev-objs := src/main.o src/file_ops.o src/memory.o src/thread.o src/sysfs.o
 
 KDIR := /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)

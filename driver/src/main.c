@@ -68,6 +68,21 @@ static int __init prochardev_init(void)
             goto error_devices;
         }
 
+	dev_set_drvdata(prochardev[i].device,&prochardev[i]);
+	
+	ret = prochardev_sysfs_create(&prochardev[i]);
+
+	if (ret)
+	{
+    	device_destroy(prochardev_class,
+                   prochardev[i].dev_num);
+
+    	cdev_del(&prochardev[i].cdev);
+
+    	prochardev_free_buffer(&prochardev[i]);
+
+    	goto error_devices;
+	}
         ret = prochardev_thread_start(&prochardev[i]);
 
         if (ret)
@@ -117,7 +132,9 @@ static void __exit prochardev_exit(void)
     {
         prochardev_thread_stop(&prochardev[i]);
 
-        device_destroy(prochardev_class,
+        prochardev_sysfs_remove(&prochardev[i]);
+
+	device_destroy(prochardev_class,
                        prochardev[i].dev_num);
 
         cdev_del(&prochardev[i].cdev);
