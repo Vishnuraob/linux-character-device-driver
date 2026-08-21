@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
@@ -7,8 +9,7 @@
 
 #include "../../driver/include/prochardev_ioctl.h"
 
-#define DEVICE_PATH "/dev/prochardev"
-#define BUFFER_SIZE 100
+#define BUFFER_SIZE 256
 
 static void write_data(int fd)
 {
@@ -43,12 +44,6 @@ static void read_data(int fd)
     if (bytes_read < 0)
     {
         perror("read");
-        return;
-    }
-
-    if (bytes_read == 0)
-    {
-        printf("Buffer is empty\n");
         return;
     }
 
@@ -110,12 +105,25 @@ static void show_menu(void)
     printf("Enter choice: ");
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
     int fd;
     int choice;
+    char device_path[64];
 
-    fd = open(DEVICE_PATH, O_RDWR);
+    if (argc != 2)
+    {
+        printf("Usage: %s <device_number>\n", argv[0]);
+        printf("Example: %s 0\n", argv[0]);
+        return 1;
+    }
+
+    snprintf(device_path,
+             sizeof(device_path),
+             "/dev/prochardev%s",
+             argv[1]);
+
+    fd = open(device_path, O_RDWR);
 
     if (fd < 0)
     {
@@ -123,7 +131,7 @@ int main(void)
         return 1;
     }
 
-    printf("ProCharDev opened successfully\n");
+    printf("Opened %s\n", device_path);
 
     while (1)
     {
@@ -174,4 +182,3 @@ int main(void)
         }
     }
 }
-
