@@ -21,12 +21,12 @@
 #define DRIVER_NAME "prochardev"
 #define DRIVER_CLASS "prochardev_class"
 #define BUFFER_SIZE 256
+#define DEVICE_COUNT 2
 
 struct prochardev_device
 {
     dev_t dev_num;
     struct cdev cdev;
-    struct class *class;
     struct device *device;
 
     char *buffer;
@@ -36,24 +36,28 @@ struct prochardev_device
 
     struct mutex lock;
     wait_queue_head_t read_queue;
+
     struct task_struct *thread;
 };
 
-extern struct prochardev_device prochardev;
+extern struct class *prochardev_class;
+extern struct prochardev_device prochardev[DEVICE_COUNT];
 
-int prochardev_alloc_buffer(void);
-void prochardev_free_buffer(void);
+int prochardev_alloc_buffer(struct prochardev_device *dev);
+void prochardev_free_buffer(struct prochardev_device *dev);
 
-int prochardev_thread_start(void);
-void prochardev_thread_stop(void);
-
-ssize_t prochardev_buffer_read(char *buffer,
+ssize_t prochardev_buffer_read(struct prochardev_device *dev,
+                               char *buffer,
                                size_t count);
 
-ssize_t prochardev_buffer_write(const char *buffer,
+ssize_t prochardev_buffer_write(struct prochardev_device *dev,
+                                const char *buffer,
                                 size_t count);
 
-void prochardev_buffer_clear(void);
+void prochardev_buffer_clear(struct prochardev_device *dev);
+
+int prochardev_thread_start(struct prochardev_device *dev);
+void prochardev_thread_stop(struct prochardev_device *dev);
 
 int prochardev_open(struct inode *inode,
                     struct file *file);

@@ -1,27 +1,42 @@
 #include "../include/prochardev.h"
 
-// Called when the device is opened
+// Open the selected device
 int prochardev_open(struct inode *inode, struct file *file)
 {
-    printk(KERN_INFO "prochardev: device opened\n");
+    struct prochardev_device *dev;
+
+    dev = container_of(inode->i_cdev,
+                       struct prochardev_device,
+                       cdev);
+
+    file->private_data = dev;
+
+    printk(KERN_INFO
+           "prochardev%d: device opened\n",
+           MINOR(dev->dev_num));
 
     return 0;
 }
 
-// Called when the device is closed
+// Close the device
 int prochardev_release(struct inode *inode, struct file *file)
 {
-    printk(KERN_INFO "prochardev: device closed\n");
+    struct prochardev_device *dev = file->private_data;
+
+    printk(KERN_INFO
+           "prochardev%d: device closed\n",
+           MINOR(dev->dev_num));
 
     return 0;
 }
 
-// Read data from the circular buffer
+// Read data from the device
 ssize_t prochardev_read(struct file *file,
                         char __user *buffer,
                         size_t count,
                         loff_t *offset)
 {
+    struct prochardev_device *dev = file->private_data;
     char *temp_buffer;
     ssize_t bytes_read;
     int ret;
@@ -33,18 +48,17 @@ ssize_t prochardev_read(struct file *file,
 
     if (!temp_buffer)
         return -ENOMEM;
-    
-    // Return immediately if non-blocking mode is enabled
-    if (prochardev.data_count == 0 && (file->f_flags & O_NONBLOCK))
+
+    if (dev->data_count == 0 &&
+        (file->f_flags & O_NONBLOCK))
     {
         kfree(temp_buffer);
         return -EAGAIN;
     }
 
-    // Wait until data is available
     ret = wait_event_interruptible(
-        prochardev.read_queue,
-        prochardev.data_count > 0
+        dev->read_queue,
+        dev->data_count > 0
     );
 
     if (ret)
@@ -53,13 +67,18 @@ ssize_t prochardev_read(struct file *file,
         return ret;
     }
 
-    mutex_lock(&prochardev.lock);
+    mutex_lock(&dev->lock);
 
-    bytes_read = prochardev_buffer_read(temp_buffer, count);
+    bytes_read =
+        prochardev_buffer_read(dev,
+                               temp_buffer,
+                               count);
 
-    mutex_unlock(&prochardev.lock);
+    mutex_unlock(&dev->lock);
 
-    if (copy_to_user(buffer, temp_buffer, bytes_read))
+    if (copy_to_user(buffer,
+                     temp_buffer,
+                     bytes_read))
     {
         kfree(temp_buffer);
         return -EFAULT;
@@ -68,18 +87,20 @@ ssize_t prochardev_read(struct file *file,
     kfree(temp_buffer);
 
     printk(KERN_INFO
-           "prochardev: read %zd bytes\n",
+           "prochardev%d: read %zd bytes\n",
+           MINOR(dev->dev_num),
            bytes_read);
 
     return bytes_read;
 }
 
-// Write data to the circular buffer
+// Write data to the device
 ssize_t prochardev_write(struct file *file,
                          const char __user *buffer,
                          size_t count,
                          loff_t *offset)
 {
+    struct prochardev_device *dev = file->private_data;
     char *temp_buffer;
     ssize_t bytes_written;
 
@@ -99,28 +120,25 @@ ssize_t prochardev_write(struct file *file,
         return -EFAULT;
     }
 
-    mutex_lock(&prochardev.lock);
+    mutex_lock(&dev->lock);
 
     bytes_written =
-        prochardev_buffer_write(temp_buffer, count);
+        prochardev_buffer_write(dev,
+                                temp_buffer,
+                                count);
 
-    mutex_unlock(&prochardev.lock);
+    mutex_unlock(&dev->lock);
 
     kfree(temp_buffer);
 
     if (bytes_written == 0)
-    {
-        printk(KERN_WARNING
-               "prochardev: buffer is full\n");
-
         return -ENOSPC;
-    }
 
-    // Wake up processes waiting for data
-    wake_up_interruptible(&prochardev.read_queue);
+    wake_up_interruptible(&dev->read_queue);
 
     printk(KERN_INFO
-           "prochardev: wrote %zd bytes\n",
+           "prochardev%d: wrote %zd bytes\n",
+           MINOR(dev->dev_num),
            bytes_written);
 
     return bytes_written;
@@ -131,20 +149,22 @@ long prochardev_ioctl(struct file *file,
                       unsigned int cmd,
                       unsigned long arg)
 {
+    struct prochardev_device *dev = file->private_data;
     int value;
 
     switch (cmd)
     {
         case PROCHARDEV_CLEAR_BUFFER:
 
-            mutex_lock(&prochardev.lock);
+            mutex_lock(&dev->lock);
 
-            prochardev_buffer_clear();
+            prochardev_buffer_clear(dev);
 
-            mutex_unlock(&prochardev.lock);
+            mutex_unlock(&dev->lock);
 
             printk(KERN_INFO
-                   "prochardev: buffer cleared\n");
+                   "prochardev%d: buffer cleared\n",
+                   MINOR(dev->dev_num));
 
             break;
 
@@ -155,9 +175,7 @@ long prochardev_ioctl(struct file *file,
             if (copy_to_user((int __user *)arg,
                              &value,
                              sizeof(value)))
-            {
                 return -EFAULT;
-            }
 
             break;
 
@@ -168,16 +186,11 @@ long prochardev_ioctl(struct file *file,
             if (copy_to_user((int __user *)arg,
                              &value,
                              sizeof(value)))
-            {
                 return -EFAULT;
-            }
 
             break;
 
         default:
-
-            printk(KERN_WARNING
-                   "prochardev: unknown ioctl command\n");
 
             return -EINVAL;
     }
@@ -185,22 +198,21 @@ long prochardev_ioctl(struct file *file,
     return 0;
 }
 
-// Check whether the device is ready
+// Check whether the device has data
 static __poll_t prochardev_poll(struct file *file,
                                 struct poll_table_struct *wait)
 {
+    struct prochardev_device *dev = file->private_data;
     __poll_t mask = 0;
 
-    // Add the process to the read wait queue
-    poll_wait(file, &prochardev.read_queue, wait);
+    poll_wait(file, &dev->read_queue, wait);
 
-    mutex_lock(&prochardev.lock);
+    mutex_lock(&dev->lock);
 
-    // Data is available to read
-    if (prochardev.data_count > 0)
+    if (dev->data_count > 0)
         mask |= POLLIN | POLLRDNORM;
 
-    mutex_unlock(&prochardev.lock);
+    mutex_unlock(&dev->lock);
 
     return mask;
 }

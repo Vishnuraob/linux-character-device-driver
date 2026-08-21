@@ -1,103 +1,109 @@
 #include "../include/prochardev.h"
 
-struct prochardev_device prochardev;
+struct prochardev_device prochardev[DEVICE_COUNT];
+struct class *prochardev_class;
 
 // Initialize the driver
 static int __init prochardev_init(void)
 {
     int ret;
+    int i;
 
-    ret = prochardev_alloc_buffer();
-
-    if (ret)
-        return ret;
-
-    ret = alloc_chrdev_region(&prochardev.dev_num,
+    ret = alloc_chrdev_region(&prochardev[0].dev_num,
                               0,
-                              1,
+                              DEVICE_COUNT,
                               DRIVER_NAME);
 
     if (ret < 0)
-    {
-        printk(KERN_ERR
-               "prochardev: failed to allocate device number\n");
+        return ret;
 
-        goto error_buffer;
+    prochardev_class = class_create(DRIVER_CLASS);
+
+    if (IS_ERR(prochardev_class))
+    {
+        ret = PTR_ERR(prochardev_class);
+        goto error_region;
     }
 
-    printk(KERN_INFO
-           "prochardev: major=%d minor=%d\n",
-           MAJOR(prochardev.dev_num),
-           MINOR(prochardev.dev_num));
-
-    cdev_init(&prochardev.cdev,
-              &prochardev_fops);
-
-    prochardev.cdev.owner = THIS_MODULE;
-
-    ret = cdev_add(&prochardev.cdev,
-                   prochardev.dev_num,
-                   1);
-
-    if (ret < 0)
+    for (i = 0; i < DEVICE_COUNT; i++)
     {
-        printk(KERN_ERR
-               "prochardev: cdev_add failed\n");
+        prochardev[i].dev_num =
+            MKDEV(MAJOR(prochardev[0].dev_num), i);
 
-        goto error_device_number;
+        ret = prochardev_alloc_buffer(&prochardev[i]);
+
+        if (ret)
+            goto error_devices;
+
+        cdev_init(&prochardev[i].cdev,
+                  &prochardev_fops);
+
+        prochardev[i].cdev.owner = THIS_MODULE;
+
+        ret = cdev_add(&prochardev[i].cdev,
+                       prochardev[i].dev_num,
+                       1);
+
+        if (ret)
+        {
+            prochardev_free_buffer(&prochardev[i]);
+            goto error_devices;
+        }
+
+        prochardev[i].device =
+            device_create(prochardev_class,
+                          NULL,
+                          prochardev[i].dev_num,
+                          NULL,
+                          "%s%d",
+                          DRIVER_NAME,
+                          i);
+
+        if (IS_ERR(prochardev[i].device))
+        {
+            cdev_del(&prochardev[i].cdev);
+            prochardev_free_buffer(&prochardev[i]);
+
+            ret = PTR_ERR(prochardev[i].device);
+            goto error_devices;
+        }
+
+        ret = prochardev_thread_start(&prochardev[i]);
+
+        if (ret)
+            goto error_devices;
+
+        printk(KERN_INFO
+               "prochardev%d: registered major=%d minor=%d\n",
+               i,
+               MAJOR(prochardev[i].dev_num),
+               MINOR(prochardev[i].dev_num));
     }
 
-    prochardev.class = class_create(DRIVER_CLASS);
-
-    if (IS_ERR(prochardev.class))
-    {
-        ret = PTR_ERR(prochardev.class);
-
-        goto error_cdev;
-    }
-
-    prochardev.device = device_create(prochardev.class,
-                                      NULL,
-                                      prochardev.dev_num,
-                                      NULL,
-                                      DRIVER_NAME);
-
-    if (IS_ERR(prochardev.device))
-    {
-        ret = PTR_ERR(prochardev.device);
-
-        goto error_class;
-    }
-
-    ret = prochardev_thread_start();
-
-	if (ret)
-	{
-    	printk(KERN_ERR
-           	"prochardev: failed to start kernel thread\n");
-
-    		goto error_device;
-	}
-
-	printk(KERN_INFO
-       		"prochardev: driver loaded\n");
+    printk(KERN_INFO "prochardev: driver loaded\n");
 
     return 0;
 
-error_device:
-	device_destroy(prochardev.class,prochardev.dev_num);
+error_devices:
 
-error_class:
-    class_destroy(prochardev.class);
+    while (--i >= 0)
+    {
+        prochardev_thread_stop(&prochardev[i]);
 
-error_cdev:
-    cdev_del(&prochardev.cdev);
+        device_destroy(prochardev_class,
+                       prochardev[i].dev_num);
 
-error_device_number:
-    unregister_chrdev_region(prochardev.dev_num, 1);
+        cdev_del(&prochardev[i].cdev);
 
-error_buffer:
-    prochardev_free_buffer();
+        prochardev_free_buffer(&prochardev[i]);
+    }
+
+    class_destroy(prochardev_class);
+
+error_region:
+
+    unregister_chrdev_region(prochardev[0].dev_num,
+                             DEVICE_COUNT);
 
     return ret;
 }
@@ -105,17 +111,24 @@ error_buffer:
 // Clean up the driver
 static void __exit prochardev_exit(void)
 {
-    prochardev_thread_stop();
-    device_destroy(prochardev.class,
-                   prochardev.dev_num);
+    int i;
 
-    class_destroy(prochardev.class);
+    for (i = 0; i < DEVICE_COUNT; i++)
+    {
+        prochardev_thread_stop(&prochardev[i]);
 
-    cdev_del(&prochardev.cdev);
+        device_destroy(prochardev_class,
+                       prochardev[i].dev_num);
 
-    unregister_chrdev_region(prochardev.dev_num, 1);
+        cdev_del(&prochardev[i].cdev);
 
-    prochardev_free_buffer();
+        prochardev_free_buffer(&prochardev[i]);
+    }
+
+    class_destroy(prochardev_class);
+
+    unregister_chrdev_region(prochardev[0].dev_num,
+                             DEVICE_COUNT);
 
     printk(KERN_INFO
            "prochardev: driver unloaded\n");
