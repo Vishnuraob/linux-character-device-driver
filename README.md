@@ -1,393 +1,697 @@
-# ProCharDev - Linux Character Device Driver
+# ProCharDev
 
-A Linux kernel character device driver developed to understand and implement
-core Embedded Linux driver concepts including character device registration,
-circular buffers, synchronization, blocking I/O, non-blocking I/O, poll(),
-IOCTL, kernel threads, multiple device instances, and SysFS.
+### Professional Linux Character Device Driver
+
+A modular Linux kernel character device driver written in C to demonstrate core Embedded Linux driver-development concepts, including character-device registration, circular buffers, synchronization, blocking and non-blocking I/O, wait queues, `poll()`, IOCTL interfaces, kernel threads, multiple device instances, and SysFS.
+
+---
+
+## Overview
+
+ProCharDev provides a user-space interface through two character devices:
+
+```text
+/dev/prochardev0
+/dev/prochardev1
+```
+
+Each device instance has its own circular buffer, mutex, wait queue, and kernel thread.
+
+The kernel thread periodically generates data and places it into the corresponding circular buffer. User-space applications can read and write data, use IOCTL commands, monitor device readiness with `poll()`, and inspect device information through SysFS.
+
+---
 
 ## Features
 
 - Linux character device registration
 - Dynamic kernel memory allocation
-- Circular buffer for data storage
-- Mutex synchronization
-- Blocking read support
-- Non-blocking read using O_NONBLOCK
+- Circular buffer implementation
+- Mutex-based synchronization
+- Blocking `read()`
+- Non-blocking I/O using `O_NONBLOCK`
 - Wait queues
-- poll() support
+- `poll()` support
 - IOCTL interface
-- Kernel thread for periodic data generation
+- Kernel threads
 - Multiple character device instances
+- Independent buffer for each device
 - SysFS attributes
 - User-space test application
-- Automated driver test script
+- Automated test script
+- Modular driver source structure
+- Kernel logging with `printk()`
+- Error handling and cleanup paths
+
+---
+
+## Architecture
+
+```text
+                         USER SPACE
+┌─────────────────────────────────────────────────────┐
+│                                                     │
+│  User Application            poll_test              │
+│       │                         │                   │
+│       └──────────────┬──────────┘                   │
+│                      │                              │
+│                      ▼                              │
+│              /dev/prochardev0                       │
+│              /dev/prochardev1                       │
+│                                                     │
+└──────────────────────┬──────────────────────────────┘
+                       │
+                       │ open/read/write/ioctl/poll
+                       ▼
+                    KERNEL
+┌─────────────────────────────────────────────────────┐
+│                                                     │
+│              Character Device Driver               │
+│                                                     │
+│  ┌──────────────┐       ┌───────────────────────┐  │
+│  │  file_ops.c  │       │        IOCTL          │  │
+│  │              │       │ CLEAR_BUFFER          │  │
+│  │ open()       │       │ GET_BUFFER_SIZE       │  │
+│  │ read()       │       │ GET_VERSION           │  │
+│  │ write()      │       │                       │  │
+│  │ release()    │       └───────────────────────┘  │
+│  │ poll()       │                                  │
+│  └──────┬───────┘                                  │
+│         │                                           │
+│         ▼                                           │
+│  ┌──────────────────────┐                          │
+│  │    Circular Buffer   │                          │
+│  │ read_pos             │                          │
+│  │ write_pos            │                          │
+│  │ data_count           │                          │
+│  └──────────┬───────────┘                          │
+│             │                                      │
+│       ┌─────┴─────┐                                │
+│       │           │                                │
+│       ▼           ▼                                │
+│     Mutex     Wait Queue                           │
+│       │           │                                │
+│       └─────┬─────┘                                │
+│             ▼                                      │
+│       Kernel Thread                                │
+│             │                                      │
+│             ▼                                      │
+│       Generated Data                               │
+│                                                     │
+└─────────────────────────────────────────────────────┘
+```
+
+---
 
 ## Project Structure
 
 ```text
 linux-character-device-driver/
-|
 ├── driver/
-|   ├── Makefile
-|   ├── include/
-|   |   ├── prochardev.h
-|   |   └── prochardev_ioctl.h
-|   |
-|   └── src/
-|       ├── main.c
-|       ├── file_ops.c
-|       ├── memory.c
-|       ├── thread.c
-|       └── sysfs.c
-|
+│   ├── Makefile
+│   ├── include/
+│   │   ├── prochardev.h
+│   │   └── prochardev_ioctl.h
+│   └── src/
+│       ├── main.c
+│       ├── file_ops.c
+│       ├── memory.c
+│       ├── thread.c
+│       └── sysfs.c
 ├── user_app/
-|   ├── include/
-|   └── src/
-|       ├── main.c
-|       └── poll_test.c
-|
+│   ├── include/
+│   │   └── .gitkeep
+│   └── src/
+│       ├── main.c
+│       └── poll_test.c
 ├── tests/
-|   └── test_driver.sh
-|
+│   └── test_driver.sh
 ├── docs/
 ├── images/
-├── LICENSE
 ├── .gitignore
+├── LICENSE
 └── README.md
+```
 
-Driver Architecture
+---
 
-                    User Space
-                        |
-            +-----------+-----------+
-            |                       |
-       User Application         poll_test
-            |                       |
-            +-----------+-----------+
-                        |
-                  /dev/prochardev0
-                  /dev/prochardev1
-                        |
-                        v
-                 Character Driver
-                        |
-              +---------+---------+
-              |                   |
-          file_ops.c          ioctl()
-              |                   |
-              v                   v
-        Circular Buffer       IOCTL Commands
-              |
-        +-----+-----+
-        |           |
-      Mutex      Wait Queue
-        |           |
-        +-----+-----+
-              |
-              v
-        Kernel Thread
-              |
-              v
-       Generated Data
+## Driver Components
 
-Driver Components
-main.c
+### `main.c`
 
-Handles driver initialization and cleanup.
+Handles initialization and cleanup, device-number allocation, device creation, SysFS setup, kernel-thread startup, and resource cleanup.
 
-It is responsible for:
+### `file_ops.c`
 
-Allocating device numbers
-Creating character devices
-Creating the device class
-Creating /dev/prochardev0 and /dev/prochardev1
-Starting kernel threads
-Removing devices during module cleanup
-file_ops.c
+Implements:
 
-Implements the character device operations:
-
+```text
 open()
 read()
 write()
 release()
-ioctl()
+unlocked_ioctl()
 poll()
+```
 
-It also connects these operations to the kernel's
-file_operations structure.
+The selected device context is stored in `file->private_data`.
 
-memory.c
+### `memory.c`
 
-Implements the circular buffer.
+Implements the 256-byte circular buffer using:
 
-The buffer uses:
-
+```text
 read_pos
 write_pos
 data_count
+```
 
-The buffer supports independent read and write positions and wraps around
-when the end of the buffer is reached.
+### `thread.c`
 
-thread.c
+Creates one kernel thread per device. Threads periodically generate messages such as:
 
-Creates a kernel thread for each device.
-
-The thread periodically generates data such as:
+```text
 Device 0 data 0
 Device 0 data 1
 Device 0 data 2
-The generated data is placed into the device's circular buffer.
+```
 
-sysfs.c
+### `sysfs.c`
 
-Creates SysFS attributes for each device.
+Creates:
+
+```text
+buffer_size
+buffer_used
+```
+
+under:
+
+```text
+/sys/class/prochardev_class/prochardev0/
+/sys/class/prochardev_class/prochardev1/
+```
+
+---
+
+## Circular Buffer
+
+The driver uses a 256-byte circular buffer.
+
+```text
+BUFFER_SIZE = 256
+```
+
+The buffer maintains:
+
+```text
+read_pos
+write_pos
+data_count
+```
+
+When either position reaches the end of the buffer it wraps back to zero.
+
+```text
+             256-byte buffer
+        ┌─────────────────────────┐
+        │       stored data       │
+        └─────────────────────────┘
+          ↑                   ↑
+       read_pos            write_pos
+```
+
+`data_count` records how many bytes are currently available.
+
+---
+
+## Synchronization
+
+A mutex protects shared buffer state:
+
+```c
+mutex_lock(&dev->lock);
+```
+
+and:
+
+```c
+mutex_unlock(&dev->lock);
+```
+
+This protects buffer contents, `read_pos`, `write_pos`, and `data_count` from concurrent access.
+
+---
+
+## Blocking and Non-Blocking I/O
+
+Normal reads block when the buffer is empty:
+
+```text
+read()
+  ↓
+buffer empty
+  ↓
+wait queue
+  ↓
+data arrives
+  ↓
+wake_up_interruptible()
+  ↓
+read() continues
+```
+
+With `O_NONBLOCK`, an empty buffer causes `read()` to return `-EAGAIN` instead of waiting.
 
 Example:
 
-/sys/class/prochardev_class/prochardev0/
+```c
+open("/dev/prochardev0", O_RDONLY | O_NONBLOCK);
+```
 
-Attributes:
+---
 
-buffer_size
-buffer_used
-Building the Driver
+## Wait Queues and `poll()`
 
-Go to the driver directory:
+Each device has a wait queue. New data wakes waiting processes:
 
-cd ~/linux-character-device-driver/driver
+```c
+wake_up_interruptible(&dev->read_queue);
+```
 
-Build:
+The driver also implements `.poll`, reporting `POLLIN` and `POLLRDNORM` when data is available.
 
-make
-Clean:
+---
 
-make clean
-Loading the Driver
+## IOCTL Interface
 
-Load the module:
+Defined in:
 
-sudo insmod prochardev.ko
+```text
+driver/include/prochardev_ioctl.h
+```
 
-Check:
+Available commands:
 
-lsmod | grep prochardev
+| Command | Purpose |
+|---|---|
+| `PROCHARDEV_CLEAR_BUFFER` | Clear the selected device buffer |
+| `PROCHARDEV_GET_BUFFER_SIZE` | Return buffer size |
+| `PROCHARDEV_GET_VERSION` | Return driver version |
+
+Current values:
+
+```text
+Buffer size: 256 bytes
+Driver version: 1
+```
+
+---
+
+## Kernel Threads
+
+Each device has its own kernel thread.
+
+Threads are created with:
+
+```c
+kthread_run()
+```
+
+and stopped with:
+
+```c
+kthread_stop()
+```
+
+The thread periodically generates data and writes it into the device's circular buffer.
+
+```text
+Kernel Thread
+      ↓
+Generate Data
+      ↓
+Circular Buffer
+      ↓
+wake_up_interruptible()
+      ↓
+Waiting Application
+```
+
+---
+
+## Multiple Devices
+
+The driver creates:
+
+```text
+/dev/prochardev0
+/dev/prochardev1
+```
+
+Each device has an independent:
+
+- Circular buffer
+- Mutex
+- Wait queue
+- Kernel thread
+- Device state
+
+The minor number identifies the device instance.
+
+---
+
+## SysFS
+
+The driver exposes device information through:
+
+```text
+/sys/class/prochardev_class/
+```
 
 Check the devices:
 
-ls -l /dev/prochardev*
+```bash
+ls /sys/class/prochardev_class/
+```
 
-Expected:
+Read buffer size:
 
-/dev/prochardev0
-/dev/prochardev1
-Removing the Driver
-sudo rmmod prochardev
+```bash
+cat /sys/class/prochardev_class/prochardev0/buffer_size
+```
+
+Read current buffer usage:
+
+```bash
+cat /sys/class/prochardev_class/prochardev0/buffer_used
+```
+
+---
+
+## Building the Driver
+
+Check the running kernel:
+
+```bash
+uname -r
+```
+
+Build:
+
+```bash
+cd ~/linux-character-device-driver/driver
+make
+```
+
+Clean:
+
+```bash
+make clean
+```
+
+The build produces:
+
+```text
+prochardev.ko
+```
+
+---
+
+## Loading and Removing
+
+Load:
+
+```bash
+sudo insmod prochardev.ko
+```
+
+Check:
+
+```bash
+lsmod | grep prochardev
+```
+
 Check kernel messages:
 
+```bash
 sudo dmesg | tail -30
-User Application
+```
 
-Build the application:
+Check device nodes:
 
+```bash
+ls -l /dev/prochardev*
+```
+
+Remove:
+
+```bash
+sudo rmmod prochardev
+```
+
+---
+
+## Basic Testing
+
+Write data:
+
+```bash
+echo -n "Hello" | sudo tee /dev/prochardev0
+```
+
+For a controlled read:
+
+```bash
+sudo dd if=/dev/prochardev0 bs=5 count=1 status=none
+```
+
+Because the driver uses blocking reads, `cat /dev/prochardev0` may continue waiting for additional data.
+
+---
+
+## User-Space Application
+
+Build:
+
+```bash
 cd ~/linux-character-device-driver/user_app
 gcc src/main.c -o prochardev_test
+```
 
 Run device 0:
 
+```bash
 sudo ./prochardev_test 0
+```
 
 Run device 1:
 
+```bash
 sudo ./prochardev_test 1
+```
 
-The application provides:
+The menu provides:
+
+```text
 1. Write data
 2. Read data
 3. Clear buffer
 4. Get buffer size
 5. Get driver version
 6. Exit
+```
 
-IOCTL Interface
+---
 
-The driver provides three IOCTL commands.
+## `poll()` Test
 
-Clear Buffer
-PROCHARDEV_CLEAR_BUFFER
+Build:
 
-Clears the circular buffer.
-
-Get Buffer Size
-PROCHARDEV_GET_BUFFER_SIZE
-
-Returns:
-
-256
-Get Driver Version
-PROCHARDEV_GET_VERSION
-
-Returns:
-
-1
-Blocking Read
-
-A normal read waits when the buffer is empty.
-read()
-  |
-  v
-buffer empty
-  |
-  v
-wait
-  |
-  v
-data arrives
-  |
-  v
-read continues
-The driver uses a wait queue to put the reading process to sleep.
-
-Non-Blocking Read
-
-The device also supports:
-
-O_NONBLOCK
-
-When no data is available, the read operation returns:
-
--EAGAIN
-
-instead of waiting.
-
-poll() Support
-
-The driver implements poll() so applications can wait for the device
-to become readable.
-
-Example test:
-
+```bash
 cd ~/linux-character-device-driver/user_app
 gcc src/poll_test.c -o poll_test
-sudo ./poll_test
-
-The test waits until data becomes available.
-
-Circular Buffer
-
-The driver uses a 256-byte circular buffer.
-
-The buffer maintains:
-
-read_pos
-write_pos
-data_count
-When the write position reaches the end of the buffer, it returns to
-position zero.
-
-Kernel Thread
-
-Each device has its own kernel thread.
-
-The thread periodically generates data and places it into the circular
-buffer.
-
-Example:
-
-Device 0 data 0
-Device 0 data 1
-Device 0 data 2
-
-The thread wakes processes waiting on the device's read queue when new
-data becomes available.
-
-Multiple Devices
-
-The driver creates two device instances:
-
-/dev/prochardev0
-/dev/prochardev1
-
-Each device has its own:
-
-Circular buffer
-Mutex
-Wait queue
-Kernel thread
-The driver uses the minor number to identify the selected device.
-
-SysFS
-
-The driver exposes device information through:
-
-/sys/class/prochardev_class/
-
-Check device 0:
-
-ls /sys/class/prochardev_class/prochardev0
-
-Read buffer size:
-
-cat /sys/class/prochardev_class/prochardev0/buffer_size
-
-Read current buffer usage:
-
-cat /sys/class/prochardev_class/prochardev0/buffer_used
-Automated Testing
+```
 
 Run:
 
+```bash
+sudo ./poll_test
+```
+
+The test waits until the device becomes readable.
+
+---
+
+## Automated Testing
+
+The repository contains:
+
+```text
+tests/test_driver.sh
+```
+
+Make it executable:
+
+```bash
+chmod +x tests/test_driver.sh
+```
+
+Run:
+
+```bash
 ./tests/test_driver.sh
+```
 
-The test checks:
+The script checks device files, SysFS, buffer size, buffer usage, and kernel-thread status.
 
-Device files
-SysFS
-Buffer size
-Buffer usage
-Kernel thread status
-Useful Commands
+---
 
-Check kernel messages:
+## Debugging
 
+View recent driver messages:
+
+```bash
 sudo dmesg | tail -30
+```
 
-Check loaded module:
+Filter driver messages:
 
+```bash
+sudo dmesg | grep prochardev
+```
+
+Check the loaded module:
+
+```bash
 lsmod | grep prochardev
+```
 
 Check device nodes:
+
+```bash
 ls -l /dev/prochardev*
+```
 
 Check SysFS:
 
+```bash
 ls /sys/class/prochardev_class/
-Technologies
-C
-Linux Kernel
-Linux Kernel Modules
-Character Device Drivers
-Kernel Threads
-Mutex
+```
+
+---
+
+## Technologies Used
+
+| Technology | Purpose |
+|---|---|
+| C | Driver and user-space implementation |
+| Linux Kernel | Driver execution environment |
+| Linux Kernel Modules | Loadable driver |
+| Character Devices | Kernel/user-space interface |
+| Mutex | Synchronization |
+| Wait Queues | Blocking I/O |
+| Circular Buffer | Kernel data storage |
+| IOCTL | Device control |
+| Kernel Threads | Periodic data generation |
+| SysFS | Device information |
+| `poll()` | Readiness notification |
+| GCC | Compilation |
+| Make | Kernel module build |
+| Git | Version control |
+
+---
+
+## Learning Objectives
+
+This project provides practical experience with:
+
+- Linux kernel module development
+- Character-device architecture
+- Major and minor device numbers
+- Linux VFS file operations
+- Kernel/user-space data transfer
+- Dynamic memory allocation
+- Mutex synchronization
+- Circular buffers
+- Blocking I/O
+- Non-blocking I/O
+- Wait queues
+- `poll()`
+- IOCTL interfaces
+- Kernel threads
+- SysFS
+- Multiple device instances
+- Kernel debugging
+- Git-based development workflow
+
+---
+
+## Development Milestones
+
+```text
+Initial Kernel Module
+        ↓
+Character Device Registration
+        ↓
+File Operations
+        ↓
+Dynamic Buffer
+        ↓
+Mutex Synchronization
+        ↓
+Modular Source Structure
+        ↓
+IOCTL Interface
+        ↓
+Circular Buffer
+        ↓
+Blocking I/O
+        ↓
 Wait Queues
-Circular Buffers
-IOCTL
-SysFS
+        ↓
+O_NONBLOCK
+        ↓
 poll()
-GCC
-Make
-Git
-Learning Objectives
-This project was developed to gain practical understanding of Linux kernel
-driver development and the interaction between user-space applications
-and kernel-space code.
+        ↓
+Kernel Thread
+        ↓
+Multiple Devices
+        ↓
+SysFS
+        ↓
+User Application
+        ↓
+Automated Testing
+```
 
-The project demonstrates how a character device can provide a controlled
-interface between applications and kernel functionality.
+---
 
-Author
+## Future Improvements
 
-Vishnu
+Possible extensions include:
 
+- Interrupt-driven data generation
+- `epoll()` support
+- Configurable buffer size
+- Runtime configuration through SysFS
+- Device statistics
+- Error counters
+- Timestamped driver data
+- Kernel tracepoints
+- Dynamic device creation
+- Hardware-backed data source
+- Integration with a real embedded peripheral
 
+---
+
+## License
+
+This project is released under the GNU General Public License v2.0.
+
+---
+
+## Author
+
+**Vishnu**
+
+Embedded Linux / Embedded Systems Project
