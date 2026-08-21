@@ -69,10 +69,23 @@ static int __init prochardev_init(void)
         goto error_class;
     }
 
-    printk(KERN_INFO
-           "prochardev: driver loaded\n");
+    ret = prochardev_thread_start();
+
+	if (ret)
+	{
+    	printk(KERN_ERR
+           	"prochardev: failed to start kernel thread\n");
+
+    		goto error_device;
+	}
+
+	printk(KERN_INFO
+       		"prochardev: driver loaded\n");
 
     return 0;
+
+error_device:
+	device_destroy(prochardev.class,prochardev.dev_num);
 
 error_class:
     class_destroy(prochardev.class);
@@ -92,6 +105,7 @@ error_buffer:
 // Clean up the driver
 static void __exit prochardev_exit(void)
 {
+    prochardev_thread_stop();
     device_destroy(prochardev.class,
                    prochardev.dev_num);
 

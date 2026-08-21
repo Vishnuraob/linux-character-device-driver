@@ -13,6 +13,8 @@
 #include <linux/mutex.h>
 #include <linux/wait.h>
 #include <linux/poll.h>
+#include <linux/kthread.h>
+#include <linux/delay.h>
 
 #include "prochardev_ioctl.h"
 
@@ -34,12 +36,16 @@ struct prochardev_device
 
     struct mutex lock;
     wait_queue_head_t read_queue;
+    struct task_struct *thread;
 };
 
 extern struct prochardev_device prochardev;
 
 int prochardev_alloc_buffer(void);
 void prochardev_free_buffer(void);
+
+int prochardev_thread_start(void);
+void prochardev_thread_stop(void);
 
 ssize_t prochardev_buffer_read(char *buffer,
                                size_t count);
